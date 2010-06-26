@@ -317,6 +317,7 @@ static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg) {
 	for(std::map<std::string,std::string>::const_iterator it = session.env_vars.begin(); it != session.env_vars.end(); ++it) {
 	  std::string key = it->first;
 	  std::string val = it->second;
+      modauthopenid::debug("setting " + key + " to \"" + val + "\"");
 	  apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
 	}
 	return true;
