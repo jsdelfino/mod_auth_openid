@@ -22,52 +22,78 @@ AC_ARG_ENABLE(debug, AC_HELP_STRING([[--enable-debug]], [enable debugging output
 fi]
 )
 
-# this will look for apxs command - put it in $APXS, fail on failure
-AX_WITH_APXS()
-# find apr-config binary
-AC_ARG_WITH(apr_config, AC_HELP_STRING([[--with-apr-config=FILE]], [Path to apr-config program]),
-			[ apr_config="$withval" ],
-			[AC_PATH_PROGS(apr_config,
-				[apr-config apr-0-config apr-1-config], 
-				[no], 
-				[$PATH:/usr/sbin/:/usr/local/apache2/bin]
-			)]
-)
+cppflags="${CPPFLAGS}"
+defaultlibs="${LIBS}"
 
-if test "$apr_config" = "no"; then
-   AC_MSG_ERROR(Could not find the apr-config program.  You can specify a location with the --with-apr-config=FILE option.  It may be named apr-0-config or apr-1-config and can be found in your apache2 bin directory.)
-fi
+# Configure path to Apache APR and HTTPD includes and libs.
+AC_MSG_CHECKING([for apr])
+AC_ARG_WITH([apr], [AC_HELP_STRING([--with-apr=PATH], [path to installed Apache APR [default=/usr]])], [
+  APR_CFLAGS="-I${withval}/include"
+  APR_LDFLAGS="-L${withval}/lib -R${withval}/lib -lapr-1 -laprutil-1"
+  AC_MSG_RESULT("${withval}")
+], [
+  APR_CFLAGS="-I/usr/include/apr-1.0"
+  APR_LDFLAGS="-lapr-1 -laprutil-1"
+  AC_MSG_RESULT(/usr)
+])
+AC_SUBST(APR_CFLAGS)
+AC_SUBST(APR_LDFLAGS)
+LIBS="${APR_CFLAGS} ${defaultlibs}"
+AC_CHECK_LIB([apr-1], [apr_pool_initialize], [], [AC_MSG_ERROR([couldn't find a suitable libapr-1, use --with-apr=PATH])])
 
-$apr_config --cppflags &> /dev/null
-if test "$?" != "0"; then
-  AC_MSG_ERROR($apr_config is not a valid apr-config program)
-fi
+AC_MSG_CHECKING([for httpd])
+AC_ARG_WITH([httpd], [AC_HELP_STRING([--with-httpd=PATH], [path to installed Apache HTTPD [default=/usr]])], [
+  HTTPD_CFLAGS="-I${withval}/include"
+  AC_MSG_RESULT("${withval}")
+], [
+  HTTPD_CFLAGS="-I/usr/include/apache2"
+  AC_MSG_RESULT(/usr)
+])
+AC_SUBST(HTTPD_CFLAGS)
+
+# Check for libopkele
+AC_MSG_CHECKING([for libopkele])
+AC_ARG_WITH([libopkele], [AC_HELP_STRING([--with-libopkele=PATH], [path to installed libopkele [default=/usr]])], [
+  OPKELE_CFLAGS="-I${withval}/include"
+  OPKELE_LIBS="-L${withval}/lib -R${withval}/lib -lopkele"
+  AC_MSG_RESULT("${withval}")
+], [
+  OPKELE_CFLAGS=""
+  OPKELE_LIBS="-lopkele"
+  AC_MSG_RESULT(/usr)
+])
+AC_SUBST(OPKELE_CFLAGS)
+AC_SUBST(OPKELE_LIBS)
+CPPFLAGS="${OPKELE_CFLAGS}"
+AC_CHECK_HEADER([opkele/opkele-config.h], [], [AC_MSG_ERROR([couldn't find a suitable libopkele library, use --with-libopkele=PATH])])
+LIBS="${OPKELE_LIBS}"
+AC_CHECK_LIB([opkele], [_init], [], [AC_MSG_ERROR([couldn't find a suitable libopkele library, use --with-libopkele=PATH])])
+
+# Check for curl
+AC_MSG_CHECKING([for curl])
+AC_ARG_WITH([curl], [AC_HELP_STRING([--with-curl=PATH], [path to installed curl [default=/usr]])], [
+  CURL_CFLAGS="-I${withval}/include"
+  CURL_LIBS="-L${withval}/lib -R${withval}/lib -lcurl"
+  AC_MSG_RESULT("${withval}")
+], [
+  CURL_CFLAGS=""
+  CURL_LIBS="-lcurl"
+  AC_MSG_RESULT(/usr)
+])
+AC_SUBST(CURL_CFLAGS)
+AC_SUBST(CURL_LIBS)
+CPPFLAGS="${CURL_CFLAGS}"
+AC_CHECK_HEADER([curl/curl.h], [], [AC_MSG_ERROR([couldn't find a suitable curl library, use --with-curl=PATH])])
+LIBS="${CURL_LIBS}"
+AC_CHECK_LIB([curl], [curl_global_init], [], [AC_MSG_ERROR([couldn't find a suitable curl library, use --with-curl=PATH])])
+
+CPPFLAGS="${cppflags}"
+LIBS="${defaultlibs}"
 
 AX_LIB_SQLITE3([3.3.0])
 if test "$SQLITE3_VERSION" == ""; then
   AC_MSG_ERROR([No sqlite 3 (http://www.sqlite.org) library found.])
 fi
-
-APR_LDFLAGS="`${apr_config} --link-ld --libs`"
-AC_SUBST(APR_LDFLAGS)
-
-APACHE_CFLAGS="-I`${APXS} -q INCLUDEDIR` -I`${apr_config} --includedir`"
-AC_SUBST(APACHE_CFLAGS)
-
-PKG_CHECK_MODULES([OPKELE],[libopkele >= 2.0],,[
- AC_MSG_ERROR([no libopkele library found (version 2.0 or higher). get one from http://kin.klever.net/libopkele/])
-])
-
-# These next few are prerequisites for libopekele, but it's possible they've been removed since that install....
-# Check for pcre
-AX_PATH_LIB_PCRE([], [ AC_MSG_ERROR([No pcre library found.  You can get it at http://www.pcre.org]) ])
-AC_SUBST(PCRE_LIBS)
-AC_SUBST(PCRE_CFLAGS)
-
-# Check for curl
-AC_CHECK_CURL([7], [], [ AC_MSG_ERROR([No curl library found.  You can get it at http://curl.haxx.se]) ]) 
-AC_SUBST(CURL_CFLAGS)
-AC_SUBST(CURL_LIBS)
 
 # Idea taken from libopekele
 nitpick=false
