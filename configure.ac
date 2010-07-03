@@ -38,7 +38,7 @@ AC_ARG_WITH([apr], [AC_HELP_STRING([--with-apr=PATH], [path to installed Apache 
 ])
 AC_SUBST(APR_CFLAGS)
 AC_SUBST(APR_LDFLAGS)
-LIBS="${APR_CFLAGS} ${defaultlibs}"
+LIBS="${APR_LDFLAGS} ${defaultlibs}"
 AC_CHECK_LIB([apr-1], [apr_pool_initialize], [], [AC_MSG_ERROR([couldn't find a suitable libapr-1, use --with-apr=PATH])])
 
 AC_MSG_CHECKING([for httpd])
@@ -66,7 +66,7 @@ AC_SUBST(OPKELE_CFLAGS)
 AC_SUBST(OPKELE_LIBS)
 CPPFLAGS="${OPKELE_CFLAGS}"
 AC_CHECK_HEADER([opkele/opkele-config.h], [], [AC_MSG_ERROR([couldn't find a suitable libopkele library, use --with-libopkele=PATH])])
-LIBS="${OPKELE_LIBS}"
+LIBS="${OPKELE_LIBS} ${defaultlibs}"
 AC_CHECK_LIB([opkele], [_init], [], [AC_MSG_ERROR([couldn't find a suitable libopkele library, use --with-libopkele=PATH])])
 
 # Check for curl
