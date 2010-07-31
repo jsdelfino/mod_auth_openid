@@ -492,8 +492,21 @@ static int mod_authopenid_method_handler(request_rec *r) {
     return DECLINED;
 
   // make a record of our being called
-  modauthopenid::debug("***" + std::string(PACKAGE_STRING) + " module has been called***");
+  modauthopenid::debug("OpenID authentication for location \"" + std::string(r->uri) + "\"");
   
+  // if the user is already authenticated by another auth module, decline doing anything
+  if (r->user != NULL) {
+    modauthopenid::debug("REMOTE_USER already set to \"" + std::string(r->user) + "\"");
+    return DECLINED;
+  }
+
+  // also check the SSL_REMOTE_USER environment variable
+  const char* ssl_user = apr_table_get(r->subprocess_env, "SSL_REMOTE_USER");
+  if (ssl_user != NULL) {
+    modauthopenid::debug("SSL_REMOTE_USER already set to \"" + std::string(ssl_user) + "\"");
+    return DECLINED;
+  }
+
   if(has_valid_session(r, s_cfg))
     return DECLINED;
 
@@ -521,8 +534,25 @@ static int mod_authopenid_method_handler(request_rec *r) {
   }
 }
 
+static int check_user_id(request_rec *r) {
+  modauthopenid_config *s_cfg = (modauthopenid_config *) ap_get_module_config(r->per_dir_config, &authopenid_module);
+  if(!s_cfg->enabled)
+    return DECLINED;
+
+  // participate in the check_user_id phase and indicate that we are doing
+  // OpenID authentication, and make mod_auth_openid play nice with Apache
+  // access policy Satisfy, Require and SSLRequire directives
+  const char* current_auth = ap_auth_type(r);
+  if (!current_auth || strcasecmp(current_auth, "OpenID"))
+    return DECLINED;
+  if(r->ap_auth_type == NULL)
+    r->ap_auth_type = (char*)"OpenID";
+  return OK;
+}
+
 static void mod_authopenid_register_hooks (apr_pool_t *p) {
   ap_hook_handler(mod_authopenid_method_handler, NULL, NULL, APR_HOOK_FIRST);
+  ap_hook_check_user_id(check_user_id, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 //module AP_MODULE_DECLARE_DATA 
