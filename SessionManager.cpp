@@ -47,7 +47,7 @@ namespace modauthopenid {
     test_result(rc, "problem creating index if it didn't exist already");
 
     query = "CREATE TABLE IF NOT EXISTS env_vars "
-      "(sess_id INTEGER, expires_on INTEGER, key VARCHAR(25), value TEXT)";
+      "(sess_id VARCHAR(33), expires_on INTEGER, key VARCHAR(25), value TEXT)";
     rc = sqlite3_exec(db, query.c_str(), 0, 0, 0);
     test_result(rc, "problem creating table if it didn't exist already");
 
@@ -78,7 +78,7 @@ namespace modauthopenid {
     }
     sqlite3_free_table(table);
 
-    const char *q2 = "SELECT e.key, e.value FROM env_vars as e, sessionmanager as s WHERE e.sess_id=s.id AND s.session_id=%Q";
+    const char *q2 = "SELECT e.key, e.value FROM env_vars as e WHERE e.sess_id=%Q";
     sql = sqlite3_mprintf(q2, session_id.c_str());
     debug(sql);
     rc = sqlite3_get_table(db, sql, &table, &nr, &nc, 0);
@@ -111,13 +111,12 @@ namespace modauthopenid {
     sqlite3_free(query);
     test_result(rc, "problem inserting session into db");
 
-    sqlite3_int64 sess_id = sqlite3_last_insert_rowid(db);
     for(map<string,string>::const_iterator it = session.env_vars.begin(); it != session.env_vars.end(); ++it) {
       std::string key = it->first;
       std::string val = it->second;
 
-      const char* q2 = "INSERT INTO env_vars (sess_id,expires_on,key,value) VALUES(%lld,%d,%Q,%Q)";
-      char *query = sqlite3_mprintf(q2, sess_id, session.expires_on, key.c_str(), val.c_str() );
+      const char* q2 = "INSERT INTO env_vars (sess_id,expires_on,key,value) VALUES(%Q,%d,%Q,%Q)";
+      char *query = sqlite3_mprintf(q2, session.session_id.c_str(), session.expires_on, key.c_str(), val.c_str() );
       debug(query);
       int rc = sqlite3_exec(db, query, 0, 0, 0);
       sqlite3_free(query);
