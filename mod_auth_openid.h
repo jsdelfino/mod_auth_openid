@@ -45,7 +45,6 @@ Created by bmuller <bmuller@butterfat.net>
 /* other general lib includes */
 #include <curl/curl.h>
 #include <pcre.h>
-#include <sqlite3.h>
 
 #include <ctime>
 #include <cstdlib>
@@ -58,6 +57,7 @@ Created by bmuller <bmuller@butterfat.net>
 #include <string>
 #include <vector>
 #include <map>
+#include <sstream>
 
 /* opkele includes */
 #include <opkele/exception.h>
@@ -83,5 +83,6 @@ Created by bmuller <bmuller@butterfat.net>
 #include "types.h"
 #include "http_helpers.h"
 #include "moid_utils.h"
+#include "memcache.h"
 #include "SessionManager.h"
 #include "MoidConsumer.h"

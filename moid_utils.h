@@ -55,13 +55,6 @@ namespace modauthopenid {
   // make a random string of size size
   void make_rstring(int size, string& s);
 
-  // print an sqlite table to stdout
-  void print_sqlite_table(sqlite3 *db, string tablename);
-
-  // test a sqlite return value, print error if there is one to stdout and return false, 
-  // return true on no error
-  bool test_sqlite_return(sqlite3 *db, int result, const string& context);
-
   // Exec a program located at exec_location with a single parameter of username
   // program should return a 0 if authorized, anything else otherwise
   // NOTE: if program hangs, so does apache

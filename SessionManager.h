@@ -25,6 +25,10 @@ OTHER DEALINGS IN THE SOFTWARE.
 Created by bmuller <bmuller@butterfat.net>
 */
 
+/**
+ * Modified to use Memcached instead of Sqlite.
+ */
+
 namespace modauthopenid {
   using namespace opkele;
   using namespace std;
@@ -33,8 +37,8 @@ namespace modauthopenid {
   class SessionManager {
   public:
     // storage_location is db location
-    SessionManager(const string& storage_location);
-    ~SessionManager() { close(); };
+    SessionManager(const memcache::MemCached& memcached);
+    ~SessionManager() {};
 
     // get session with id session_id and set values in session
     // if session doesn't exist, don't do anything
@@ -43,23 +47,9 @@ namespace modauthopenid {
     // store given session information in a new session entry
     void store_session(const session_t& session);
 
-    // print session table to stdout
-    void print_table();
-    
-    // close database
-    void close();
   private:
-    sqlite3 *db;
+    memcache::MemCached memcached;
     
-    // delete all expired sessions
-    void ween_expired();
-
-    // db status
-    bool is_closed;
-
-    // test sqlite query result - print any errors to stderr
-    bool test_result(int result, const string& context);
   };
 }
-
 

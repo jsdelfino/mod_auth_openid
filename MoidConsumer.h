@@ -25,6 +25,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 Created by bmuller <bmuller@butterfat.net>
 */
 
+/**
+ * Modified to use Memcached instead of Sqlite.
+ */
 
 namespace modauthopenid {
   using namespace opkele;
@@ -36,8 +39,8 @@ namespace modauthopenid {
   public:
     // storage location is db location, _asnonceid is the association session nonce, and serverurl is 
     // the return to value (url initially requested by user)
-    MoidConsumer(const string& storage_location, const string& _asnonceid, const string& _serverurl);
-    virtual ~MoidConsumer() { close(); };
+    MoidConsumer(const memcache::MemCached memcached, const string& _asnonceid, const string& _serverurl);
+    virtual ~MoidConsumer() {};
 
     // store a new assocation
     assoc_t store_assoc(const string& server,const string& handle,const string& type,const secret_t& secret,int expires_in);
@@ -80,29 +83,18 @@ namespace modauthopenid {
     // check to see if a session exists with the nonce session id given in the constructor
     bool session_exists();
 
-    // print all tables to stdout
-    void print_tables();
-
-    // close db
-    void close();
-
     // delete session with given session nonce id in constructor param list
     void kill_session();
+
   private:
-    sqlite3 *db;
-
-    // delete all expired sessions
-    void ween_expired();
-
-    // test result from sqlite query - print error to stderr if there is one
-    bool test_result(int result, const string& context);
+    memcache::MemCached memcached;
 
     // strings for the nonce based authentication session and the server's url (the originally 
     // requested url)
     string asnonceid, serverurl; 
 
-    // booleans for the database state and whether any endpoint has been set yet
-    bool is_closed, endpoint_set;
+    // whether any endpoint has been set yet
+    bool endpoint_set;
     
     // The normalized id the user has attempted to use
     mutable string normalized_id;

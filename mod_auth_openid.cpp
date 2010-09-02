@@ -41,7 +41,6 @@ void modauthopenid_ax_map_cleanup(void* ptr) { delete (modauthopenid_ax_map*)ptr
 
 
 typedef struct {
-  const char *db_location;
   char *trust_root;
   const char *cookie_name;
   char *login_page;
@@ -57,6 +56,11 @@ typedef struct {
   modauthopenid_ax_map *attr;
 } modauthopenid_config;
 
+typedef struct {
+  apr_array_header_t *memcached_addr;
+  modauthopenid::memcache::MemCached memcached;
+} modauthopenid_server_config;
+
 typedef const char *(*CMD_HAND_TYPE) ();
 
 // determine if a connection is using https - only took 1000 years to figure this one out
@@ -65,7 +69,6 @@ static APR_OPTIONAL_FN_TYPE(ssl_is_https) *using_https = APR_RETRIEVE_OPTIONAL_F
 static void *create_modauthopenid_config(apr_pool_t *p, char *s) {
   modauthopenid_config *newcfg;
   newcfg = (modauthopenid_config *) apr_pcalloc(p, sizeof(modauthopenid_config));
-  newcfg->db_location = "/tmp/mod_auth_openid.db";
   newcfg->enabled = false;
   newcfg->use_cookie = true;
   newcfg->cookie_name = "open_id_session_id";
@@ -82,10 +85,11 @@ static void *create_modauthopenid_config(apr_pool_t *p, char *s) {
   return (void *) newcfg;
 }
 
-static const char *set_modauthopenid_db_location(cmd_parms *parms, void *mconfig, const char *arg) {
-  modauthopenid_config *s_cfg = (modauthopenid_config *) mconfig;
-  s_cfg->db_location = (char *) arg;
-  return NULL;
+static void *create_modauthopenid_server_config(apr_pool_t *p, server_rec *s) {
+  modauthopenid_server_config *newcfg;
+  newcfg = (modauthopenid_server_config *) apr_pcalloc(p, sizeof(modauthopenid_server_config));
+  newcfg->memcached_addr = apr_array_make(p, 5, sizeof(char *));
+  return (void *) newcfg;
 }
 
 static const char *set_modauthopenid_cookie_path(cmd_parms *parms, void *mconfig, const char *arg) { 
@@ -174,11 +178,23 @@ static const char *set_modauthopenid_attribute_exchange_add(cmd_parms *parms, vo
     return NULL;
 }
 
+static const char *add_modauthopenid_memcached(cmd_parms *cmd, void *mconfig, const char *arg) {
+  modauthopenid_server_config *s_cfg = (modauthopenid_server_config *) ap_get_module_config(cmd->server->module_config, &authopenid_module);
+  *(const char **)apr_array_push(s_cfg->memcached_addr) = arg;
+  return NULL;
+}
+
+static void child_init(apr_pool_t* p, server_rec* s) {
+  modauthopenid_server_config *s_cfg = (modauthopenid_server_config *)ap_get_module_config(s->module_config, &authopenid_module);
+  if (s_cfg->memcached_addr->nelts != 0)
+    s_cfg->memcached = *(new (modauthopenid::memcache::new_memcached(p)) modauthopenid::memcache::MemCached(s_cfg->memcached_addr));
+  else
+    s_cfg->memcached = *(new (modauthopenid::memcache::new_memcached(p)) modauthopenid::memcache::MemCached("localhost", 11211));
+}
+
 static const command_rec mod_authopenid_cmds[] = {
   AP_INIT_TAKE1("AuthOpenIDCookieLifespan", (CMD_HAND_TYPE) set_modauthopenid_cookie_lifespan, NULL, OR_AUTHCFG,
 		"AuthOpenIDCookieLifespan <number seconds>"),
-  AP_INIT_TAKE1("AuthOpenIDDBLocation", (CMD_HAND_TYPE) set_modauthopenid_db_location, NULL, OR_AUTHCFG,
-		"AuthOpenIDDBLocation <string>"),
   AP_INIT_TAKE1("AuthOpenIDLoginPage", (CMD_HAND_TYPE) set_modauthopenid_login_page, NULL, OR_AUTHCFG,
 		"AuthOpenIDLoginPage <url string>"),
   AP_INIT_TAKE1("AuthOpenIDTrustRoot", (CMD_HAND_TYPE) set_modauthopenid_trust_root, NULL, OR_AUTHCFG,
@@ -201,6 +217,8 @@ static const command_rec mod_authopenid_cmds[] = {
 		"AuthOpenIDUserProgram <full path to authentication program>"),
   AP_INIT_TAKE23("AuthOpenIDAXAdd", (CMD_HAND_TYPE) set_modauthopenid_attribute_exchange_add, NULL, OR_AUTHCFG,
 		 "AuthOpenIDAXAdd <alias> <uri> <required(default=true)>"),
+  AP_INIT_ITERATE("AuthOpenIDMemcached", (CMD_HAND_TYPE) add_modauthopenid_memcached, NULL, RSRC_CONF,
+		  "AuthOpenIDMemcached <a list of memcached host:port addresses>"),
   {NULL}
 };
 
@@ -292,16 +310,15 @@ static bool is_distrusted_provider(modauthopenid_config *s_cfg, std::string url)
   return false;
 };
 
-static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg) {
+static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg) {
   // test for valid session - if so, return DECLINED
   std::string session_id = "";
   modauthopenid::get_session_id(r, std::string(s_cfg->cookie_name), session_id);
   if(session_id != "" && s_cfg->use_cookie) {
     modauthopenid::debug("found session_id in cookie: " + session_id);
     modauthopenid::session_t session;
-    modauthopenid::SessionManager sm(std::string(s_cfg->db_location));
+    modauthopenid::SessionManager sm(s_scfg->memcached);
     sm.get_session(session_id, session);
-    sm.close();
 
     // if session found 
     if(std::string(session.identity) != "") {
@@ -330,7 +347,7 @@ static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg) {
 };
 
 
-static int start_authentication_session(request_rec *r, modauthopenid_config *s_cfg, opkele::params_t& params, 
+static int start_authentication_session(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg, opkele::params_t& params, 
 					std::string& return_to, std::string& trust_root) {
   // remove all openid GET query params (openid.*) - we don't want that maintained through
   // the redirection process.  We do, however, want to keep all other GET params.
@@ -341,7 +358,7 @@ static int start_authentication_session(request_rec *r, modauthopenid_config *s_
   // add a nonce and reset what return_to is
   std::string nonce, re_direct;
   modauthopenid::make_rstring(10, nonce);
-  modauthopenid::MoidConsumer consumer(std::string(s_cfg->db_location), nonce, return_to);    
+  modauthopenid::MoidConsumer consumer(s_scfg->memcached, nonce, return_to);    
   params["modauthopenid.nonce"] = nonce;
   full_uri(r, return_to, s_cfg);
   return_to = params.append_query(return_to, "");
@@ -359,27 +376,22 @@ static int start_authentication_session(request_rec *r, modauthopenid_config *s_
 
     re_direct = consumer.checkid_(cm, opkele::mode_checkid_setup, return_to, trust_root, &ax).append_query(consumer.get_endpoint().uri);
   } catch (opkele::failed_xri_resolution &e) {
-    consumer.close();
     return show_input(r, s_cfg, modauthopenid::invalid_id);
   } catch (opkele::failed_discovery &e) {
-    consumer.close();
     return show_input(r, s_cfg, modauthopenid::invalid_id);
   } catch (opkele::bad_input &e) {
-    consumer.close();
     return show_input(r, s_cfg, modauthopenid::invalid_id);
   } catch (opkele::exception &e) {
-    consumer.close();
     modauthopenid::debug("Error while fetching idP location: " + std::string(e.what()));
     return show_input(r, s_cfg, modauthopenid::no_idp_found);
   }
-  consumer.close();
   if(!is_trusted_provider(s_cfg , re_direct) || is_distrusted_provider(s_cfg, re_direct))
     return show_input(r, s_cfg, modauthopenid::idp_not_trusted);
   return modauthopenid::http_redirect(r, re_direct);
 };
 
 
-static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, opkele::params_t& params, std::string identity, std::map<std::string,std::string>& env_vars) {
+static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg, opkele::params_t& params, std::string identity, std::map<std::string,std::string>& env_vars) {
   // now set auth cookie, if we're doing session based auth
   std::string session_id, hostname, path, cookie_value, redirect_location, args;
   if(s_cfg->cookie_path != NULL) 
@@ -409,9 +421,8 @@ static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, opkel
   else
     session.expires_on = rawtime + s_cfg->cookie_lifespan;
 
-  modauthopenid::SessionManager sm(std::string(s_cfg->db_location));
+  modauthopenid::SessionManager sm(s_scfg->memcached);
   sm.store_session(session);
-  sm.close();
 
   modauthopenid::remove_openid_vars(params);
   args = params.append_query("", "").substr(1);
@@ -424,12 +435,12 @@ static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, opkel
 };
 
 
-static int validate_authentication_session(request_rec *r, modauthopenid_config *s_cfg, opkele::params_t& params, std::string& return_to) {
+static int validate_authentication_session(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg, opkele::params_t& params, std::string& return_to) {
   // make sure nonce is present
   if(!params.has_param("modauthopenid.nonce")) 
     return show_input(r, s_cfg, modauthopenid::invalid_nonce);
 
-  modauthopenid::MoidConsumer consumer(std::string(s_cfg->db_location), params.get_param("modauthopenid.nonce"), return_to);
+  modauthopenid::MoidConsumer consumer(s_scfg->memcached, params.get_param("modauthopenid.nonce"), return_to);
   try {
     opkele::ax_t ax;
     opkele::params_t openidparams;
@@ -438,13 +449,11 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
     
     // if no exception raised, check nonce
     if(!consumer.session_exists()) {
-      consumer.close();
       return show_input(r, s_cfg, modauthopenid::invalid_nonce); 
     }
 
     // if we should be using a user specified auth program, run it to see if user is authorized
     if(s_cfg->use_auth_program && !modauthopenid::exec_auth(std::string(s_cfg->auth_program), consumer.get_claimed_id())) {
-      consumer.close();
       return show_input(r, s_cfg, modauthopenid::unauthorized);       
     }
 
@@ -452,7 +461,6 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
     // this will be different than openid_identifier GET param
     std::string identity = consumer.get_claimed_id();
     consumer.kill_session();
-    consumer.close();
 
     // Read out all requested ax-attributes and prepare them for storage in env_vars
     std::map<std::string, std::string> env_vars;
@@ -464,7 +472,7 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
     }
 
     if(s_cfg->use_cookie) 
-      return set_session_cookie(r, s_cfg, params, identity, env_vars);
+      return set_session_cookie(r, s_cfg, s_scfg, params, identity, env_vars);
       
     // if we're not setting cookie - don't redirect, just show page
     modauthopenid::debug("setting REMOTE_USER to \"" + identity + "\"");
@@ -478,7 +486,6 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
     return DECLINED;
   } catch(opkele::exception &e) {
     modauthopenid::debug("Error in authentication: " + std::string(e.what()));
-    consumer.close();
     return show_input(r, s_cfg, modauthopenid::unspecified);
   }
 };
@@ -486,6 +493,8 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
 static int mod_authopenid_method_handler(request_rec *r) {
   modauthopenid_config *s_cfg;
   s_cfg = (modauthopenid_config *) ap_get_module_config(r->per_dir_config, &authopenid_module);
+  modauthopenid_server_config *s_scfg;
+  s_scfg = (modauthopenid_server_config *) ap_get_module_config(r->server->module_config, &authopenid_module);
 
   // if we're not enabled for this location/dir, decline doing anything
   if(!s_cfg->enabled) 
@@ -507,7 +516,7 @@ static int mod_authopenid_method_handler(request_rec *r) {
     return DECLINED;
   }
 
-  if(has_valid_session(r, s_cfg))
+  if(has_valid_session(r, s_cfg, s_scfg))
     return DECLINED;
 
   // parse the get/post params
@@ -524,9 +533,9 @@ static int mod_authopenid_method_handler(request_rec *r) {
 
   // if user is posting id (only openid_identifier will contain a value)
   if(params.has_param("openid_identifier") && !params.has_param("openid.assoc_handle")) {
-    return start_authentication_session(r, s_cfg, params, return_to, trust_root);
+    return start_authentication_session(r, s_cfg, s_scfg, params, return_to, trust_root);
   } else if(params.has_param("openid.assoc_handle")) { // user has been redirected, authenticate them and set cookie
-    return validate_authentication_session(r, s_cfg, params, return_to);
+    return validate_authentication_session(r, s_cfg, s_scfg, params, return_to);
   } else { //display an input form
     if(params.has_param("openid.mode") && params.get_param("openid.mode") == "cancel")
       return show_input(r, s_cfg, modauthopenid::canceled);
@@ -551,6 +560,7 @@ static int check_user_id(request_rec *r) {
 }
 
 static void mod_authopenid_register_hooks (apr_pool_t *p) {
+  ap_hook_child_init(child_init, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_handler(mod_authopenid_method_handler, NULL, NULL, APR_HOOK_FIRST);
   ap_hook_check_user_id(check_user_id, NULL, NULL, APR_HOOK_MIDDLE);
 }
@@ -560,7 +570,7 @@ module AP_MODULE_DECLARE_DATA authopenid_module = {
 	STANDARD20_MODULE_STUFF,
 	create_modauthopenid_config,
 	NULL, // config merge function - default is to override
-	NULL,
+	create_modauthopenid_server_config,
 	NULL,
 	mod_authopenid_cmds,
 	mod_authopenid_register_hooks,

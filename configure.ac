@@ -90,11 +90,6 @@ AC_CHECK_LIB([curl], [curl_global_init], [], [AC_MSG_ERROR([couldn't find a suit
 CPPFLAGS="${cppflags}"
 LIBS="${defaultlibs}"
 
-AX_LIB_SQLITE3([3.3.0])
-if test "$SQLITE3_VERSION" == ""; then
-  AC_MSG_ERROR([No sqlite 3 (http://www.sqlite.org) library found.])
-fi
-
 # Idea taken from libopekele
 nitpick=false
 AC_ARG_ENABLE([nitpicking],

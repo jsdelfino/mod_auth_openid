@@ -141,32 +141,6 @@ namespace modauthopenid {
       s += cs[true_random()%62];
   }
 
-  void print_sqlite_table(sqlite3 *db, string tablename) {
-    fprintf(stdout, "Printing table: %s.  ", tablename.c_str());
-    string sql = "SELECT * FROM " + tablename;
-    int rc, nr, nc, size;
-    char **table;
-    rc = sqlite3_get_table(db, sql.c_str(), &table, &nr, &nc, 0);
-    fprintf(stdout, "There are %d rows.\n", nr);    
-    size = (nr * nc) + nc;
-    for(int i=0; i<size; i++) {
-      fprintf(stdout, "%s\t", table[i]);
-      if(((i+1) % nc) == 0) 
-	fprintf(stdout, "\n");
-    }
-    fprintf(stdout, "\n");
-    sqlite3_free_table(table);
-  };
-
-  bool test_sqlite_return(sqlite3 *db, int result, const string& context) {
-    if(result != SQLITE_OK){
-      string msg = "SQLite Error - " + context + ": %s\n";
-      fprintf(stderr, msg.c_str(), sqlite3_errmsg(db));
-      return false;
-    }
-    return true;
-  };
-
   bool exec_auth(string exec_location, string username) {
     if(exec_location.size() > 255)
       exec_location.resize(255);
