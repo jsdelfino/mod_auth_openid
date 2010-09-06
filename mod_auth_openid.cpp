@@ -270,7 +270,7 @@ static int show_input(request_rec *r, modauthopenid_config *s_cfg, modauthopenid
 
   std::string uri_location;
   full_uri(r, uri_location, s_cfg, true);
-  params["modauthopenid.referrer"] = uri_location;
+  params["openauth_referrer"] = uri_location;
 
   params["modauthopenid.error"] = modauthopenid::error_to_string(e, true);
   return modauthopenid::http_redirect(r, params.append_query(s_cfg->login_page, ""));
@@ -285,7 +285,7 @@ static int show_input(request_rec *r, modauthopenid_config *s_cfg) {
   modauthopenid::remove_openid_vars(params);
   std::string uri_location;
   full_uri(r, uri_location, s_cfg, true);
-  params["modauthopenid.referrer"] = uri_location;
+  params["openauth_referrer"] = uri_location;
   return modauthopenid::http_redirect(r, params.append_query(s_cfg->login_page, ""));
 }
 
@@ -408,6 +408,7 @@ static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, modau
   else 
     modauthopenid::base_dir(std::string(r->uri), path); 
   modauthopenid::make_rstring(32, session_id);
+  session_id = std::string("OpenID_") + session_id;
   modauthopenid::make_cookie_value(cookie_value, std::string(s_cfg->cookie_name), session_id, path, s_cfg->cookie_lifespan, s_cfg->secure_cookie); 
   modauthopenid::debug("setting cookie: " + cookie_value);
   apr_table_set(r->err_headers_out, "Set-Cookie", cookie_value.c_str());

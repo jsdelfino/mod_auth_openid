@@ -181,7 +181,7 @@ namespace modauthopenid {
     for(iter = params.begin(); iter != params.end(); iter++) {
       string param_key(iter->first);
       // if starts with openid. or modauthopenid. (for the nonce) or openid_identifier (the login) remove it
-      if((param_key.substr(0, 7) == "openid." || param_key.substr(0, 14) == "modauthopenid." || param_key == "openid_identifier")) {
+      if((param_key.substr(0, 7) == "openid." || param_key.substr(0, 9) == "openauth_" || param_key.substr(0, 14) == "modauthopenid." || param_key == "openid_identifier")) {
         params.erase(param_key);
         // stupid map iterator screws up if we just continue the iteration... 
 	// so recursion to the rescue - we'll delete them one at a time    
