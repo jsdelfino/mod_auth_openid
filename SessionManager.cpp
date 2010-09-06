@@ -38,7 +38,7 @@ namespace modauthopenid {
 
   void SessionManager::get_session(const std::string& session_id, session_t& session) {
     std::ostringstream k1;
-    k1 << "session/" << session_id;
+    k1 << "(openIDSession " << session_id << ")";
     const std::string v1 = memcache::get(k1.str(), memcached);
     if (v1 == "")
         return;
@@ -46,7 +46,7 @@ namespace modauthopenid {
     q1 >> session.session_id >> session.hostname >> session.path >> session.identity >> session.expires_on;
 
     std::ostringstream k2;
-    k2 << "env_vars/" << session.session_id;
+    k2 << "(openIDEnvVars " << session.session_id << ")";
     const std::string v2 = memcache::get(k2.str(), memcached);
     if (v2 == "")
         return;
@@ -58,7 +58,7 @@ namespace modauthopenid {
           break;
       std::string val;
       q2 >> val;
-      session.env_vars[key] = string(val);
+      session.env_vars[key] = curl_unescape(val.c_str(), val.length());
     }
   }
 
@@ -67,7 +67,7 @@ namespace modauthopenid {
     const int timeout = now >= session.expires_on? 1 : session.expires_on - now;
 
     std::ostringstream k1;
-    k1 << "session/" << session.session_id;
+    k1 << "(openIDSession " << session.session_id << ")";
     std::ostringstream q1;
     q1 << session.session_id << " " << session.hostname << " " << session.path << " " << session.identity << " " << session.expires_on;
     const apr_status_t rc = memcache::put(k1.str(), q1.str(), timeout, memcached);
@@ -77,12 +77,13 @@ namespace modauthopenid {
     }
 
     std::ostringstream k2;
-    k2 << "env_vars/" << session.session_id;
+    k2 << "(openIDEnvVars " << session.session_id << ")";
     std::ostringstream q2;
     for(map<string,string>::const_iterator it = session.env_vars.begin(); it != session.env_vars.end(); ++it) {
       const std::string key = it->first;
       const std::string val = it->second;
-      q2 << key << " " << val;
+      if (val != "")
+        q2 << key << " " << curl_escape(val.c_str(), val.length()) << " ";
     }
     const apr_status_t rc2 = memcache::put(k2.str(), q2.str(), timeout, memcached);
     if (rc2 != APR_SUCCESS)

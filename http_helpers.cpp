@@ -239,9 +239,9 @@ namespace modauthopenid {
     return p;
   };
 
-  void make_cookie_value(string& cookie_value, const string& name, const string& session_id, const string& path, int cookie_lifespan) {
+  void make_cookie_value(string& cookie_value, const string& name, const string& session_id, const string& path, int cookie_lifespan, bool secure) {
     if(cookie_lifespan == 0) {
-      cookie_value = name + "=" + session_id + "; path=" + path;
+      cookie_value = name + "=" + session_id + "; path=" + path + "; secure=" + (secure? "TRUE" : "FALSE");
     } else {
       time_t t;
       t = time(NULL) + cookie_lifespan;
@@ -249,7 +249,7 @@ namespace modauthopenid {
       tmp = gmtime(&t);
       char expires[200];
       strftime(expires, sizeof(expires), "%a, %d-%b-%Y %H:%M:%S GMT", tmp);
-      cookie_value = name + "=" + session_id + "; expires=" + string(expires) + "; path=" + path;
+      cookie_value = name + "=" + session_id + "; expires=" + string(expires) + "; path=" + path + "; secure=" + (secure? "TRUE" : "FALSE");
     }
   };
 

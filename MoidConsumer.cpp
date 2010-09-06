@@ -45,7 +45,7 @@ namespace modauthopenid {
     const int expires_on = expires_in + time(0);
 
     std::ostringstream k;
-    k << "association/" << server << "/" << handle;
+    k << "(openIDAssociation " << server << " " << handle << ")";
     std::ostringstream q;
     q << server << " " << handle << " " << util::encode_base64(&(secret.front()),secret.size()) << " " << expires_on << " " << type;
     const apr_status_t rc = memcache::put(k.str(), q.str(), expires_in, memcached);
@@ -53,7 +53,7 @@ namespace modauthopenid {
         memcache::failure(rc, "Could not store association");
 
     std::ostringstream k2;
-    k2 << "association/" << server;
+    k2 << "(openIDAssociation " << server << ")";
     const apr_status_t rc2 = memcache::put(k2.str(), q.str(), expires_in, memcached);
     if (rc2 != APR_SUCCESS)
         memcache::failure(rc2, "Could not store association");
@@ -64,9 +64,10 @@ namespace modauthopenid {
   assoc_t MoidConsumer::retrieve_assoc(const string& server, const string& handle) {
     debug("looking up association: server = " + server + " handle = " + handle);
     std::ostringstream k;
-    k << "association/" << server;
+    k << "(openIDAssociation " << server;
     if (handle != "")
-      k << "/" << handle;
+      k << " " << handle;
+    k << ")";
     const std::string v = memcache::get(k.str(), memcached);
     if (v == "")
       throw failed_lookup(OPKELE_CP_ "Could not find association.");
@@ -87,7 +88,7 @@ namespace modauthopenid {
   void MoidConsumer::invalidate_assoc(const string& server,const string& handle) {
     debug("invalidating association: server = " + server + " handle = " + handle);
     std::ostringstream k;
-    k << "association/" << server << "/" << handle;
+    k << "(openIDAssociation " << server << " " << handle << ")";
     const apr_status_t rc = memcache::del(k.str(), memcached);
     if (rc != APR_SUCCESS)
       memcache::failure(rc, "Could not invalidate assocation for server \"" + server + "\" and handle \"" + handle + "\"");
@@ -102,7 +103,7 @@ namespace modauthopenid {
     debug("checking nonce " + nonce);
 
     std::ostringstream k;
-    k << "response_nonces/" << server << "/" << nonce;
+    k << "(openIDResponseNonces " << server << " " << nonce << ")";
     const std::string v = memcache::get(k.str(), memcached);
     if (v != "") {
       debug("found preexisting nonce - could be a replay attack");
@@ -121,7 +122,7 @@ namespace modauthopenid {
 
   bool MoidConsumer::session_exists() {
     std::ostringstream k;
-    k << "authentication_sessions/" << asnonceid;
+    k << "(openIDAuthenticationSessions " << asnonceid << ")";
     const std::string v = memcache::get(k.str(), memcached);
     if (v == "") {
       debug("could not find authentication session \"" + asnonceid + "\" in db.");
@@ -133,7 +134,7 @@ namespace modauthopenid {
   void MoidConsumer::begin_queueing() {
     endpoint_set = false;
     std::ostringstream k;
-    k << "authentication_sessions/" << asnonceid;
+    k << "(openIDAuthenticationSessions " << asnonceid << ")";
     const apr_status_t rc = memcache::del(k.str(), memcached);
     if (rc != APR_SUCCESS)
         memcache::failure(rc, "Problem resetting authentication session");
@@ -146,7 +147,7 @@ namespace modauthopenid {
       int expires_on = now + 3600;  // allow nonce to exist for up to one hour without being returned
 
       std::ostringstream k;
-      k << "authentication_sessions/" << asnonceid;
+      k << "(openIDAuthenticationSessions " << asnonceid << ")";
       std::ostringstream q;
       q << asnonceid << " " << ep.uri << " " << ep.claimed_id << " " << ep.local_id << " " << expires_on;
       const apr_status_t rc = memcache::put(k.str(), q.str(), 3600, memcached);
@@ -161,7 +162,7 @@ namespace modauthopenid {
   const openid_endpoint_t& MoidConsumer::get_endpoint() const {
     debug("Fetching endpoint");
     std::ostringstream k;
-    k << "authentication_sessions/" << asnonceid;
+    k << "(openIDAuthenticationSessions " << asnonceid << ")";
     const std::string v = memcache::get(k.str(), memcached);
     if(v == "") {
       debug("Could not find an endpoint for authentication session \"" + asnonceid + "\" in db.");
@@ -177,7 +178,7 @@ namespace modauthopenid {
   void MoidConsumer::next_endpoint() {
     debug("Clearing all session information - we're only storing one endpoint, can't get next one, cause we didn't store it.");
     std::ostringstream k;
-    k << "authentication_sessions/" << asnonceid;
+    k << "(openIDAuthenticationSessions " << asnonceid << ")";
     const apr_status_t rc = memcache::del(k.str(), memcached);
     if (rc != APR_SUCCESS)
         memcache::failure(rc, "Problem in next_endpoint()");
@@ -186,7 +187,7 @@ namespace modauthopenid {
 
   void MoidConsumer::kill_session() {
     std::ostringstream k;
-    k << "authentication_sessions/" << asnonceid;
+    k << "(openIDAuthenticationSessions " << asnonceid << ")";
     const apr_status_t rc = memcache::del(k.str(), memcached);
     if (rc != APR_SUCCESS)
         memcache::failure(rc, "Problem killing session");
@@ -197,7 +198,7 @@ namespace modauthopenid {
     normalized_id = nid;
 
     std::ostringstream k;
-    k << "authentication_sessions/" << asnonceid;
+    k << "(openIDAuthenticationSessions " << asnonceid << ")";
     const std::string v = memcache::get(k.str(), memcached);
     if (v == "") {
       debug("could not find an normalized_id for authentication session \"" + asnonceid + "\" in db.");
@@ -224,7 +225,7 @@ namespace modauthopenid {
       return normalized_id;
     }
     std::ostringstream k;
-    k << "authentication_sessions/" << asnonceid;
+    k << "(openIDAuthenticationSessions " << asnonceid << ")";
     const std::string v = memcache::get(k.str(), memcached);
     if (v == "") {
       debug("could not find an normalized_id for authentication session \"" + asnonceid + "\" in db.");

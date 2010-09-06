@@ -46,6 +46,7 @@ typedef struct {
   char *login_page;
   bool enabled;
   bool use_cookie;
+  bool secure_cookie;
   apr_array_header_t *trusted;
   apr_array_header_t *distrusted;
   int cookie_lifespan;
@@ -128,6 +129,12 @@ static const char *set_modauthopenid_usecookie(cmd_parms *parms, void *mconfig, 
   return NULL;
 }
 
+static const char *set_modauthopenid_secure_cookie(cmd_parms *parms, void *mconfig, int flag) {
+  modauthopenid_config *s_cfg = (modauthopenid_config *) mconfig;
+  s_cfg->secure_cookie = (bool) flag;
+  return NULL;
+}
+
 static const char *set_modauthopenid_cookie_lifespan(cmd_parms *parms, void *mconfig, const char *arg) {
   modauthopenid_config *s_cfg = (modauthopenid_config *) mconfig;
   s_cfg->cookie_lifespan = atoi(arg);
@@ -203,6 +210,8 @@ static const command_rec mod_authopenid_cmds[] = {
 		"AuthOpenIDCookieName <name of cookie to use>"),
   AP_INIT_TAKE1("AuthOpenIDCookiePath", (CMD_HAND_TYPE) set_modauthopenid_cookie_path, NULL, OR_AUTHCFG, 
 		"AuthOpenIDCookiePath <path of cookie to use>"), 
+  AP_INIT_FLAG("AuthOpenIDSecureCookie", (CMD_HAND_TYPE) set_modauthopenid_secure_cookie, NULL, OR_AUTHCFG,
+		"AuthOpenIDSecureCookie <On | Off> - use a secure cookie?"),
   AP_INIT_FLAG("AuthOpenIDEnabled", (CMD_HAND_TYPE) set_modauthopenid_enabled, NULL, OR_AUTHCFG,
 	       "AuthOpenIDEnabled <On | Off>"),
   AP_INIT_FLAG("AuthOpenIDUseCookie", (CMD_HAND_TYPE) set_modauthopenid_usecookie, NULL, OR_AUTHCFG,
@@ -217,8 +226,8 @@ static const command_rec mod_authopenid_cmds[] = {
 		"AuthOpenIDUserProgram <full path to authentication program>"),
   AP_INIT_TAKE23("AuthOpenIDAXAdd", (CMD_HAND_TYPE) set_modauthopenid_attribute_exchange_add, NULL, OR_AUTHCFG,
 		 "AuthOpenIDAXAdd <alias> <uri> <required(default=true)>"),
-  AP_INIT_ITERATE("AuthOpenIDMemcached", (CMD_HAND_TYPE) add_modauthopenid_memcached, NULL, RSRC_CONF,
-		  "AuthOpenIDMemcached <a list of memcached host:port addresses>"),
+  AP_INIT_ITERATE("AddAuthOpenIDMemcached", (CMD_HAND_TYPE) add_modauthopenid_memcached, NULL, RSRC_CONF,
+		  "AddAuthOpenIDMemcached <a list of memcached host:port addresses>"),
   {NULL}
 };
 
@@ -327,19 +336,19 @@ static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modau
       std::string valid_path(session.path);
       // if found session has a valid path
       if(valid_path == uri_path.substr(0, valid_path.size()) && apr_strnatcmp(session.hostname.c_str(), r->hostname)==0) {
-	modauthopenid::debug("setting REMOTE_USER to \"" + std::string(session.identity) + "\"");
-	r->user = apr_pstrdup(r->pool, std::string(session.identity).c_str());
+	    modauthopenid::debug("setting REMOTE_USER to \"" + std::string(session.identity) + "\"");
+	    r->user = apr_pstrdup(r->pool, std::string(session.identity).c_str());
 
-	// set the session-env_vars
-	for(std::map<std::string,std::string>::const_iterator it = session.env_vars.begin(); it != session.env_vars.end(); ++it) {
-	  std::string key = it->first;
-	  std::string val = it->second;
-      modauthopenid::debug("setting " + key + " to \"" + val + "\"");
-	  apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
-	}
-	return true;
+	    // set the session-env_vars
+	    for(std::map<std::string,std::string>::const_iterator it = session.env_vars.begin(); it != session.env_vars.end(); ++it) {
+	      std::string key = it->first;
+	      std::string val = it->second;
+          modauthopenid::debug("setting " + key + " to \"" + val + "\"");
+	      apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
+	    }
+	    return true;
       } else {
-	modauthopenid::debug("session found for different path or hostname");
+	    modauthopenid::debug("session found for different path or hostname");
       }
     }
   }
@@ -399,7 +408,7 @@ static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, modau
   else 
     modauthopenid::base_dir(std::string(r->uri), path); 
   modauthopenid::make_rstring(32, session_id);
-  modauthopenid::make_cookie_value(cookie_value, std::string(s_cfg->cookie_name), session_id, path, s_cfg->cookie_lifespan); 
+  modauthopenid::make_cookie_value(cookie_value, std::string(s_cfg->cookie_name), session_id, path, s_cfg->cookie_lifespan, s_cfg->secure_cookie); 
   modauthopenid::debug("setting cookie: " + cookie_value);
   apr_table_set(r->err_headers_out, "Set-Cookie", cookie_value.c_str());
   hostname = std::string(r->hostname);
@@ -468,7 +477,8 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
       const modauthopenid_ax_t attr = it->second;
       std::string key = it->first;
       std::string val = ax.get_attribute(attr.uri.c_str());
-      env_vars[key] = val;
+      if (val != "")
+        env_vars[key] = val;
     }
 
     if(s_cfg->use_cookie) 
@@ -500,9 +510,6 @@ static int mod_authopenid_method_handler(request_rec *r) {
   if(!s_cfg->enabled) 
     return DECLINED;
 
-  // make a record of our being called
-  modauthopenid::debug("OpenID authentication for location \"" + std::string(r->uri) + "\"");
-  
   // if the user is already authenticated by another auth module, decline doing anything
   if (r->user != NULL) {
     modauthopenid::debug("REMOTE_USER already set to \"" + std::string(r->user) + "\"");
@@ -516,6 +523,11 @@ static int mod_authopenid_method_handler(request_rec *r) {
     return DECLINED;
   }
 
+  // make a record of our being called
+  modauthopenid::debug("OpenID authentication for location \"" + std::string(r->uri) + "\"");
+  if(r->ap_auth_type == NULL)
+    r->ap_auth_type = (char*)"OpenID";
+  
   if(has_valid_session(r, s_cfg, s_scfg))
     return DECLINED;
 
@@ -552,10 +564,8 @@ static int check_user_id(request_rec *r) {
   // OpenID authentication, and make mod_auth_openid play nice with Apache
   // access policy Satisfy, Require and SSLRequire directives
   const char* current_auth = ap_auth_type(r);
-  if (!current_auth || strcasecmp(current_auth, "OpenID"))
+  if (!current_auth || strcasecmp(current_auth, "Open"))
     return DECLINED;
-  if(r->ap_auth_type == NULL)
-    r->ap_auth_type = (char*)"OpenID";
   return OK;
 }
 
