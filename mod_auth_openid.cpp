@@ -319,6 +319,20 @@ static bool is_distrusted_provider(modauthopenid_config *s_cfg, std::string url)
   return false;
 };
 
+static const std::string realm(const std::string& identity, request_rec* r) {
+    // Convert an identity URI from a hostname realm
+    apr_uri_t uri;
+    apr_uri_parse(r->pool, identity.c_str(), &uri);
+    const std::string host(uri.hostname);
+    const size_t d1 = host.find_last_of('.');
+    if (d1 == std::string::npos)
+        return host;
+    size_t d2 = host.find_last_of('.', d1 - 1);
+    if (d2 == std::string::npos)
+        return host;
+    return host.substr(d2 + 1);
+}
+
 static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg) {
   // test for valid session - if so, return DECLINED
   std::string session_id = "";
@@ -346,7 +360,11 @@ static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modau
           modauthopenid::debug("setting " + key + " to \"" + val + "\"");
 	      apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
 	    }
+
+        // Store the identity in an env var
+        apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, "REALM"), apr_pstrdup(r->pool, realm(session.identity, r).c_str()));
 	    return true;
+
       } else {
 	    modauthopenid::debug("session found for different path or hostname");
       }
@@ -444,7 +462,6 @@ static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, modau
   return modauthopenid::http_redirect(r, redirect_location);
 };
 
-
 static int validate_authentication_session(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg, opkele::params_t& params, std::string& return_to) {
   // make sure nonce is present
   if(!params.has_param("modauthopenid.nonce")) 
@@ -488,13 +505,18 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
     // if we're not setting cookie - don't redirect, just show page
     modauthopenid::debug("setting REMOTE_USER to \"" + identity + "\"");
     r->user = apr_pstrdup(r->pool, identity.c_str());
+
     // set the session-env_vars
     for(std::map<std::string,std::string>::const_iterator it = env_vars.begin(); it != env_vars.end(); ++it) {
       std::string key = it->first;
       std::string val = it->second;
       apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
     }
+
+    // Store the identity in an env var
+    apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, "REALM"), apr_pstrdup(r->pool, realm(identity, r).c_str()));
     return DECLINED;
+
   } catch(opkele::exception &e) {
     modauthopenid::debug("Error in authentication: " + std::string(e.what()));
     return show_input(r, s_cfg, modauthopenid::unspecified);
