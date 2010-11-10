@@ -28,15 +28,22 @@ Created by bmuller <bmuller@butterfat.net>
 
 /* Apache includes. */
 #include "httpd.h"
-#include "http_core.h"
+// Hack to workaround compile error with HTTPD 2.3.8
+#define new new_
 #include "http_config.h"
+#undef new
+#include "http_core.h"
 #include "apr_strings.h"
 #include "http_protocol.h"
 #include "http_main.h"
 #include "http_request.h"
 #include "util_script.h"
 #include "ap_config.h"
+// Hack to workaround compile error with HTTPD 2.3.8
+#define aplog_module_index aplog_module_index = 0
 #include "http_log.h"
+#undef APLOG_MODULE_INDEX
+#define APLOG_MODULE_INDEX (aplog_module_index ? *aplog_module_index : APLOG_NO_MODULE)
 #include "mod_ssl.h"
 #include "apr.h"
 #include "apr_general.h"

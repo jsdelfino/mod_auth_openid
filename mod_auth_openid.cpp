@@ -523,36 +523,24 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
   }
 };
 
-static int mod_authopenid_method_handler(request_rec *r) {
-  modauthopenid_config *s_cfg;
-  s_cfg = (modauthopenid_config *) ap_get_module_config(r->per_dir_config, &authopenid_module);
+static int check_authn(request_rec *r) {
+  modauthopenid_config *s_cfg = (modauthopenid_config *) ap_get_module_config(r->per_dir_config, &authopenid_module);
+  if(!s_cfg->enabled)
+    return DECLINED;
+  const char* current_auth = ap_auth_type(r);
+  if (!current_auth || strcasecmp(current_auth, "Open"))
+    return DECLINED;
+
   modauthopenid_server_config *s_scfg;
   s_scfg = (modauthopenid_server_config *) ap_get_module_config(r->server->module_config, &authopenid_module);
 
-  // if we're not enabled for this location/dir, decline doing anything
-  if(!s_cfg->enabled) 
-    return DECLINED;
-
-  // if the user is already authenticated by another auth module, decline doing anything
-  if (r->user != NULL) {
-    modauthopenid::debug("REMOTE_USER already set to \"" + std::string(r->user) + "\"");
-    return DECLINED;
-  }
-
-  // also check the SSL_REMOTE_USER environment variable
-  const char* ssl_user = apr_table_get(r->subprocess_env, "SSL_REMOTE_USER");
-  if (ssl_user != NULL) {
-    modauthopenid::debug("SSL_REMOTE_USER already set to \"" + std::string(ssl_user) + "\"");
-    return DECLINED;
-  }
-
   // make a record of our being called
   modauthopenid::debug("OpenID authentication for location \"" + std::string(r->uri) + "\"");
-  if(r->ap_auth_type == NULL)
-    r->ap_auth_type = (char*)"OpenID";
   
-  if(has_valid_session(r, s_cfg, s_scfg))
-    return DECLINED;
+  if(has_valid_session(r, s_cfg, s_scfg)) {
+    r->ap_auth_type = const_cast<char*>(current_auth);
+    return OK;
+  }
 
   // parse the get/post params
   opkele::params_t params;
@@ -568,34 +556,24 @@ static int mod_authopenid_method_handler(request_rec *r) {
 
   // if user is posting id (only openid_identifier will contain a value)
   if(params.has_param("openid_identifier") && !params.has_param("openid.assoc_handle")) {
+    r->ap_auth_type = const_cast<char*>(current_auth);
     return start_authentication_session(r, s_cfg, s_scfg, params, return_to, trust_root);
+
   } else if(params.has_param("openid.assoc_handle")) { // user has been redirected, authenticate them and set cookie
+    r->ap_auth_type = const_cast<char*>(current_auth);
     return validate_authentication_session(r, s_cfg, s_scfg, params, return_to);
+
   } else { //display an input form
+    r->ap_auth_type = const_cast<char*>(current_auth);
     if(params.has_param("openid.mode") && params.get_param("openid.mode") == "cancel")
       return show_input(r, s_cfg, modauthopenid::canceled);
     return show_input(r, s_cfg);
   }
 }
 
-static int check_user_id(request_rec *r) {
-  modauthopenid_config *s_cfg = (modauthopenid_config *) ap_get_module_config(r->per_dir_config, &authopenid_module);
-  if(!s_cfg->enabled)
-    return DECLINED;
-
-  // participate in the check_user_id phase and indicate that we are doing
-  // OpenID authentication, and make mod_auth_openid play nice with Apache
-  // access policy Satisfy, Require and SSLRequire directives
-  const char* current_auth = ap_auth_type(r);
-  if (!current_auth || strcasecmp(current_auth, "Open"))
-    return DECLINED;
-  return OK;
-}
-
 static void mod_authopenid_register_hooks (apr_pool_t *p) {
   ap_hook_child_init(child_init, NULL, NULL, APR_HOOK_MIDDLE);
-  ap_hook_handler(mod_authopenid_method_handler, NULL, NULL, APR_HOOK_FIRST);
-  ap_hook_check_user_id(check_user_id, NULL, NULL, APR_HOOK_MIDDLE);
+  ap_hook_check_authn(check_authn, NULL, NULL, APR_HOOK_MIDDLE, AP_AUTH_INTERNAL_PER_CONF);
 }
 
 //module AP_MODULE_DECLARE_DATA 
