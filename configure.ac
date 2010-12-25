@@ -28,18 +28,18 @@ defaultlibs="${LIBS}"
 # Configure path to Apache APR and HTTPD includes and libs.
 AC_MSG_CHECKING([for apr])
 AC_ARG_WITH([apr], [AC_HELP_STRING([--with-apr=PATH], [path to installed Apache APR [default=/usr]])], [
-  APR_CFLAGS="-I${withval}/include"
-  APR_LDFLAGS="-L${withval}/lib -R${withval}/lib -lapr-1 -laprutil-1"
+  APR_CFLAGS="-I${withval}/include/apr-2"
+  APR_LDFLAGS="-L${withval}/lib -R${withval}/lib -lapr-2"
   AC_MSG_RESULT("${withval}")
 ], [
-  APR_CFLAGS="-I/usr/include/apr-1.0"
-  APR_LDFLAGS="-lapr-1 -laprutil-1"
+  APR_CFLAGS="-I/usr/include/apr-2"
+  APR_LDFLAGS="-lapr-2"
   AC_MSG_RESULT(/usr)
 ])
 AC_SUBST(APR_CFLAGS)
 AC_SUBST(APR_LDFLAGS)
 LIBS="${APR_LDFLAGS} ${defaultlibs}"
-AC_CHECK_LIB([apr-1], [apr_pool_initialize], [], [AC_MSG_ERROR([couldn't find a suitable libapr-1, use --with-apr=PATH])])
+AC_CHECK_LIB([apr-2], [apr_pool_initialize], [], [AC_MSG_ERROR([couldn't find a suitable libapr-2, use --with-apr=PATH])])
 
 AC_MSG_CHECKING([for httpd])
 AC_ARG_WITH([httpd], [AC_HELP_STRING([--with-httpd=PATH], [path to installed Apache HTTPD [default=/usr]])], [
