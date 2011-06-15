@@ -67,7 +67,7 @@ AC_SUBST(OPKELE_LIBS)
 CPPFLAGS="${OPKELE_CFLAGS}"
 AC_CHECK_HEADER([opkele/opkele-config.h], [], [AC_MSG_ERROR([couldn't find a suitable libopkele library, use --with-libopkele=PATH])])
 LIBS="${OPKELE_LIBS} ${defaultlibs}"
-AC_CHECK_LIB([opkele], [_init], [], [AC_MSG_ERROR([couldn't find a suitable libopkele library, use --with-libopkele=PATH])])
+#AC_CHECK_LIB([opkele], [_init], [], [AC_MSG_ERROR([couldn't find a suitable libopkele library, use --with-libopkele=PATH])])
 
 # Check for curl
 AC_MSG_CHECKING([for curl])
