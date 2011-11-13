@@ -82,6 +82,7 @@ namespace modauthopenid {
       debug("Redirecting via HTTP_MOVED_TEMPORARILY to: " + location);
       apr_table_set(r->headers_out, "Location", location.c_str());
       apr_table_setn(r->headers_out, "Cache-Control", "no-cache");
+      r->status = HTTP_MOVED_TEMPORARILY;
       return HTTP_MOVED_TEMPORARILY;
     }
   };
@@ -249,7 +250,7 @@ namespace modauthopenid {
       tmp = gmtime(&t);
       char expires[200];
       strftime(expires, sizeof(expires), "%a, %d-%b-%Y %H:%M:%S GMT", tmp);
-      cookie_value = name + "=" + session_id + "; expires=" + string(expires) + ";domain=." + hostname + "; path=" + path + "; secure=" + (secure? "TRUE" : "FALSE");
+      cookie_value = name + "=" + session_id + "; expires=" + string(expires) + "; domain=." + hostname + "; path=" + path + (secure? "; secure=TRUE" : "");
     }
   };
 

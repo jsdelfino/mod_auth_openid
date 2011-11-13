@@ -72,6 +72,7 @@ static void *create_modauthopenid_config(apr_pool_t *p, char *s) {
   newcfg = (modauthopenid_config *) apr_pcalloc(p, sizeof(modauthopenid_config));
   newcfg->enabled = false;
   newcfg->use_cookie = true;
+  newcfg->secure_cookie = false;
   newcfg->cookie_name = "open_id_session_id";
   newcfg->cookie_path = NULL; 
   newcfg->trusted = apr_array_make(p, 5, sizeof(char *));
