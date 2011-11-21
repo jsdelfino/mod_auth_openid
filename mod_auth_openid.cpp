@@ -351,16 +351,24 @@ static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modau
       std::string valid_path(session.path);
       // if found session has a valid path
       if(valid_path == uri_path.substr(0, valid_path.size()) && apr_strnatcmp(session.hostname.c_str(), r->hostname)==0) {
-	    modauthopenid::debug("setting REMOTE_USER to \"" + std::string(session.identity) + "\"");
-	    r->user = apr_pstrdup(r->pool, std::string(session.identity).c_str());
 
 	    // set the session-env_vars
+        std::string remote_user;
 	    for(std::map<std::string,std::string>::const_iterator it = session.env_vars.begin(); it != session.env_vars.end(); ++it) {
 	      std::string key = it->first;
 	      std::string val = it->second;
           modauthopenid::debug("setting " + key + " to \"" + val + "\"");
-	      apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
+          if (key == "REMOTE_USER")
+            remote_user = val;
+          else
+	        apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
 	    }
+
+        if (!remote_user.empty())
+	      r->user = apr_pstrdup(r->pool, std::string(remote_user).c_str());
+        else
+	      r->user = apr_pstrdup(r->pool, std::string(session.identity).c_str());
+	    modauthopenid::debug("setting REMOTE_USER to \"" + std::string(r->user) + "\"");
 
         // Store the identity in an env var
         apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, "REALM"), apr_pstrdup(r->pool, realm(session.identity, r).c_str()));
@@ -491,27 +499,36 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
     consumer.kill_session();
 
     // Read out all requested ax-attributes and prepare them for storage in env_vars
+    std::string remote_user;
     std::map<std::string, std::string> env_vars;
+    env_vars["OPENID_IDENTITY"] = identity;
     for(modauthopenid_ax_map::const_iterator it = (*s_cfg->attr).begin(); it != (*s_cfg->attr).end(); ++it) {
       const modauthopenid_ax_t attr = it->second;
       std::string key = it->first;
       std::string val = ax.get_attribute(attr.uri.c_str());
-      if (val != "")
+      if (!val.empty()) {
         env_vars[key] = val;
+        if (key == "REMOTE_USER")
+          remote_user = val;
+      }
     }
 
+    // if we're not setting cookie - don't redirect, just show page
     if(s_cfg->use_cookie) 
       return set_session_cookie(r, s_cfg, s_scfg, params, identity, env_vars);
       
-    // if we're not setting cookie - don't redirect, just show page
-    modauthopenid::debug("setting REMOTE_USER to \"" + identity + "\"");
-    r->user = apr_pstrdup(r->pool, identity.c_str());
+    if (!remote_user.empty())
+      r->user = apr_pstrdup(r->pool, remote_user.c_str());
+    else
+      r->user = apr_pstrdup(r->pool, identity.c_str());
+    modauthopenid::debug("setting REMOTE_USER to \"" + std::string(r->user) + "\"");
 
     // set the session-env_vars
     for(std::map<std::string,std::string>::const_iterator it = env_vars.begin(); it != env_vars.end(); ++it) {
       std::string key = it->first;
       std::string val = it->second;
-      apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
+      if (key != "REMOTE_USER")
+        apr_table_set(r->subprocess_env, apr_pstrdup(r->pool, key.c_str()), apr_pstrdup(r->pool, val.c_str()));
     }
 
     // Store the identity in an env var
