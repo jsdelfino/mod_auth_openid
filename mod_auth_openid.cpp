@@ -236,12 +236,7 @@ static const command_rec mod_authopenid_cmds[] = {
 // Get the full URI of the request_rec's request location 
 // clean_params specifies whether or not all openid.* and modauthopenid.* params should be cleared
 static void full_uri(request_rec *r, std::string& result, modauthopenid_config *s_cfg, bool clean_params=false) {
-  std::string hostname(r->hostname);
   std::string uri(r->uri);
-  apr_port_t i_port = ap_get_server_port(r);
-  std::string prefix = (using_https != NULL && using_https(r->connection)) ? "https://" : "http://";
-  char *port = apr_psprintf(r->pool, "%lu", (unsigned long) i_port);
-  std::string s_port = (i_port == 80 || i_port == 443) ? "" : ":" + std::string(port);
 
   std::string args;
   if(clean_params) {
@@ -253,8 +248,20 @@ static void full_uri(request_rec *r, std::string& result, modauthopenid_config *
     args = (r->args == NULL) ? "" : "?" + std::string(r->args);
   }
 
-  if(s_cfg->server_name == NULL)
+  if(s_cfg->server_name == NULL) {
+    const char* fwd_hostname = apr_table_get(r->headers_in, "X-Forwarded-Server");
+    std::string hostname(fwd_hostname != NULL? fwd_hostname : r->hostname);
+
+    const char* fwd_https = apr_table_get(r->headers_in, "X-Forwarded-HTTPS");
+    std::string prefix = ((using_https != NULL && using_https(r->connection)) || (fwd_https != NULL && !strcmp(fwd_https, "on")))? "https://" : "http://";
+
+    const char* fwd_port = apr_table_get(r->headers_in, "X-Forwarded-Port");
+    apr_port_t i_port = fwd_port != NULL? atoi(fwd_port) : ap_get_server_port(r);
+    char *port = apr_psprintf(r->pool, "%lu", (unsigned long) i_port);
+    std::string s_port = (i_port == 80 || i_port == 443) ? "" : ":" + std::string(port);
+
     result = prefix + hostname + s_port + uri + args;
+  }
   else
     result = std::string(s_cfg->server_name) + uri + args;
 }
@@ -350,7 +357,8 @@ static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modau
       modauthopenid::base_dir(std::string(r->uri), uri_path);
       std::string valid_path(session.path);
       // if found session has a valid path
-      if(valid_path == uri_path.substr(0, valid_path.size()) && apr_strnatcmp(session.hostname.c_str(), r->hostname)==0) {
+      const char* fwd_hostname = apr_table_get(r->headers_in, "X-Forwarded-Server");
+      if(valid_path == uri_path.substr(0, valid_path.size()) && apr_strnatcmp(session.hostname.c_str(), fwd_hostname != NULL? fwd_hostname : r->hostname)==0) {
 
 	    // set the session-env_vars
         std::string remote_user;
@@ -436,7 +444,8 @@ static int set_session_cookie(request_rec *r, modauthopenid_config *s_cfg, modau
     modauthopenid::base_dir(std::string(r->uri), path); 
   modauthopenid::make_rstring(32, session_id);
   session_id = std::string("OpenID_") + session_id;
-  hostname = std::string(r->hostname);
+  const char* fwd_hostname = apr_table_get(r->headers_in, "X-Forwarded-Server");
+  hostname = std::string(fwd_hostname != NULL? fwd_hostname : r->hostname);
   modauthopenid::make_cookie_value(cookie_value, std::string(s_cfg->cookie_name), session_id, hostname, path, s_cfg->cookie_lifespan, s_cfg->secure_cookie); 
   modauthopenid::debug("setting cookie: " + cookie_value);
   apr_table_set(r->err_headers_out, "Set-Cookie", cookie_value.c_str());
