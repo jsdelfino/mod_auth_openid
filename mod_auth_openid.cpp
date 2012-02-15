@@ -192,12 +192,22 @@ static const char *add_modauthopenid_memcached(cmd_parms *cmd, void *mconfig, co
   return NULL;
 }
 
+static int config_merge(modauthopenid_server_config* s_scfg, server_rec* s) {
+  if (s == NULL)
+    return OK;
+  modauthopenid_server_config *s_cfg = (modauthopenid_server_config *)ap_get_module_config(s->module_config, &authopenid_module);
+  *s_cfg = *s_scfg;
+  return config_merge(s_scfg, s->next);
+}
+
 static void child_init(apr_pool_t* p, server_rec* s) {
+  modauthopenid::debug("child_init");
   modauthopenid_server_config *s_cfg = (modauthopenid_server_config *)ap_get_module_config(s->module_config, &authopenid_module);
   if (s_cfg->memcached_addr->nelts != 0)
-    s_cfg->memcached = *(new (modauthopenid::memcache::new_memcached(p)) modauthopenid::memcache::MemCached(s_cfg->memcached_addr));
+    s_cfg->memcached = modauthopenid::memcache::MemCached(s_cfg->memcached_addr, p);
   else
-    s_cfg->memcached = *(new (modauthopenid::memcache::new_memcached(p)) modauthopenid::memcache::MemCached("localhost", 11211));
+    s_cfg->memcached = modauthopenid::memcache::MemCached("localhost", 11211, p);
+  config_merge(s_cfg, s->next);
 }
 
 static const command_rec mod_authopenid_cmds[] = {

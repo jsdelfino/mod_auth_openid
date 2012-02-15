@@ -35,7 +35,7 @@ namespace modauthopenid {
   using namespace std;
   using namespace opkele;
  
-  MoidConsumer::MoidConsumer(const memcache::MemCached memcached, const string& _asnonceid, const string& _serverurl) :
+  MoidConsumer::MoidConsumer(const memcache::MemCached& memcached, const string& _asnonceid, const string& _serverurl) :
                              memcached(memcached), asnonceid(_asnonceid), serverurl(_serverurl), endpoint_set(false), normalized_id("") {
   }
 

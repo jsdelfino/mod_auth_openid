@@ -39,7 +39,7 @@ namespace modauthopenid {
   public:
     // storage location is db location, _asnonceid is the association session nonce, and serverurl is 
     // the return to value (url initially requested by user)
-    MoidConsumer(const memcache::MemCached memcached, const string& _asnonceid, const string& _serverurl);
+    MoidConsumer(const memcache::MemCached& memcached, const string& _asnonceid, const string& _serverurl);
     virtual ~MoidConsumer() {};
 
     // store a new assocation

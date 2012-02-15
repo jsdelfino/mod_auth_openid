@@ -50,18 +50,18 @@ const apr_status_t failure(const apr_status_t rc, const std::string& msg);
  */
 class MemCached {
 public:
-    MemCached() : owner(false) {
+    MemCached() : owner(false), pool(NULL) {
     }
 
-    MemCached(const string host, const int port) : owner(true) {
+    MemCached(const string host, const int port, apr_pool_t* pool) : owner(true), pool(pool) {
         apr_pool_create(&pool, NULL);
         apr_memcache_create(pool, 1, 0, &mc);
         addServer(host, port);
     }
 
-    MemCached(const apr_array_header_t* addrs) : owner(true) {
+    MemCached(const apr_array_header_t* addrs, apr_pool_t* pool) : owner(true), pool(pool) {
         apr_pool_create(&pool, NULL);
-        apr_memcache_create(pool, 1, 0, &mc);
+        apr_memcache_create(pool, addrs->nelts, 0, &mc);
         addServers(addrs);
     }
 
@@ -71,7 +71,6 @@ public:
     ~MemCached() {
         if (!owner)
             return;
-        apr_pool_destroy(pool);
     }
 
 private:
@@ -87,11 +86,6 @@ private:
     const apr_status_t addServer(const std::string& host, const int port);
     const apr_status_t addServers(const apr_array_header_t* addrs);
 };
-
-/**
- * Allocate a new memcached context.
- */
-MemCached* new_memcached(apr_pool_t* p);
 
 /**
  * Replace spaces by tabs (as spaces are not allowed in memcached keys).

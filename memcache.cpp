@@ -40,6 +40,9 @@ namespace modauthopenid {
 namespace memcache {
 
 const apr_status_t MemCached::addServer(const std::string& host, const int port) {
+  char sp[16];
+  sprintf(sp, "%d", port);
+  debug("memcache::addServer " + host + ":" + sp);
   apr_memcache_server_t *server;
   const apr_status_t sc = apr_memcache_server_create(pool, host.c_str(), (apr_port_t)port, 1, 1, 1, 600, &server);
   if (sc != APR_SUCCESS)
@@ -62,18 +65,6 @@ const apr_status_t MemCached::addServers(const apr_array_header_t* addrs) {
       return rc;
   }
   return APR_SUCCESS;
-}
-
-apr_status_t memcached_cleanup(void* v) {
-    MemCached* c = static_cast<MemCached*>(v);
-    c->~MemCached();
-    return APR_SUCCESS;
-}
-
-MemCached* new_memcached(apr_pool_t* p) {
-    void* ptr = apr_palloc(p, sizeof(MemCached));
-    apr_pool_cleanup_register(p, ptr, memcached_cleanup, apr_pool_cleanup_null) ;
-    return static_cast<MemCached*>(ptr);
 }
 
 const apr_status_t failure(const apr_status_t rc, const std::string& msg) {
