@@ -242,7 +242,7 @@ namespace modauthopenid {
 
   void make_cookie_value(string& cookie_value, const string& name, const string& session_id, const string& hostname, const string& path, int cookie_lifespan, bool secure) {
     if(cookie_lifespan == 0) {
-      cookie_value = name + "=" + session_id + ";domain=." + hostname + "; path=" + path + "; secure=" + (secure? "TRUE" : "FALSE");
+      cookie_value = name + "=" + session_id + "; domain=." + hostname + "; path=" + path + (secure? "; secure=TRUE" : "");
     } else {
       time_t t;
       t = time(NULL) + cookie_lifespan;
