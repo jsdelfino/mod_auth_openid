@@ -351,10 +351,8 @@ static const std::string realm(const std::string& identity, request_rec* r) {
     return host.substr(d2 + 1);
 }
 
-static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg) {
+static bool has_valid_session(request_rec *r, modauthopenid_config *s_cfg, modauthopenid_server_config* s_scfg, std::string& session_id) {
   // test for valid session - if so, return DECLINED
-  std::string session_id = "";
-  modauthopenid::get_session_id(r, std::string(s_cfg->cookie_name), session_id);
   if(session_id != "" && s_cfg->use_cookie) {
     modauthopenid::debug("found session_id in cookie: " + session_id);
     modauthopenid::session_t session;
@@ -573,8 +571,16 @@ static int check_authn(request_rec *r) {
 
   // make a record of our being called
   modauthopenid::debug("OpenID authentication for location \"" + std::string(r->uri) + "\"");
-  
-  if(has_valid_session(r, s_cfg, s_scfg)) {
+
+  // get the session id from the request cookie
+  std::string session_id = "";
+  modauthopenid::get_session_id(r, std::string(s_cfg->cookie_name), session_id);
+  if(session_id != "" && s_cfg->use_cookie) {
+      if (session_id.substr(0, 7) != "OpenID_")
+          return DECLINED;
+  }
+
+  if(has_valid_session(r, s_cfg, s_scfg, session_id)) {
     r->ap_auth_type = const_cast<char*>(current_auth);
     return OK;
   }
