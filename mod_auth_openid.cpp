@@ -260,7 +260,9 @@ static void full_uri(request_rec *r, std::string& result, modauthopenid_config *
 
   if(s_cfg->server_name == NULL) {
     const char* fwd_hostname = apr_table_get(r->headers_in, "X-Forwarded-Server");
-    std::string hostname(fwd_hostname != NULL? fwd_hostname : r->hostname);
+    const char* s_hostname = ap_get_server_name(r);
+    const char* d_hostname = r->server->server_hostname != NULL? r->server->server_hostname : "localhost";
+    std::string hostname(fwd_hostname != NULL? fwd_hostname : s_hostname != NULL? s_hostname : d_hostname);
 
     const char* fwd_https = apr_table_get(r->headers_in, "X-Forwarded-HTTPS");
     std::string prefix = ((using_https != NULL && using_https(r->connection)) || (fwd_https != NULL && !strcmp(fwd_https, "on")))? "https://" : "http://";
@@ -589,20 +591,22 @@ static int check_authn(request_rec *r) {
   opkele::params_t params;
   modauthopenid::get_request_params(r, params);
 
-  // get our current url and trust root
-  std::string return_to, trust_root;
-  full_uri(r, return_to, s_cfg);
-  if(s_cfg->trust_root == NULL)
-    modauthopenid::base_dir(return_to, trust_root);
-  else
-    trust_root = std::string(s_cfg->trust_root);
-
   // if user is posting id (only openid_identifier will contain a value)
   if(params.has_param("openid_identifier") && !params.has_param("openid.assoc_handle")) {
+    std::string return_to, trust_root;
+    full_uri(r, return_to, s_cfg);
+    if(s_cfg->trust_root == NULL)
+      modauthopenid::base_dir(return_to, trust_root);
+    else
+      trust_root = std::string(s_cfg->trust_root);
+
     r->ap_auth_type = const_cast<char*>(current_auth);
     return start_authentication_session(r, s_cfg, s_scfg, params, return_to, trust_root);
 
   } else if(params.has_param("openid.assoc_handle")) { // user has been redirected, authenticate them and set cookie
+    std::string return_to;
+    full_uri(r, return_to, s_cfg);
+
     r->ap_auth_type = const_cast<char*>(current_auth);
     return validate_authentication_session(r, s_cfg, s_scfg, params, return_to);
 
